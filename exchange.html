@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<title>Exchange</title>
+</head>
+<body>
+<section>
+	<div id="currencies" class="col-lg-12">
+	</div>
+
+</section>
+<footer>
+	<script type="text/javascript" src="https://cdn.jsdelivr.net/npm/ccxt@1.31.85/dist/ccxt.browser.js"></script>
+	<script type="text/javascript">
+
+		class Currency {
+			baseMarkets = [];
+			quoteMarkets = [];
+
+			constructor(index,name){
+				this.index = index;
+				this.name = name;
+			}
+
+			updateMarket(market){
+				switch(this.name){
+					case market.base:
+						this.baseMarkets.push(market);
+						break;
+					case market.quote:
+						this.quoteMarkets.push(market);
+						break;
+					default:
+						throw new Error(`${this.name} is not tradable in the ${market.symbol} market at ${market.exchange.name} exchange`);
+				}
+			}
+
+			renderHTML(){
+				window.currenciesSection.innerHTML += `<p> ${this.index+1} ${this.name} </p>`;
+			}
+		}
+
+		
+
+
+		class Market {
+
+			constructor(exchange,market){
+				this.exchange = exchange;
+				this.info = market;
+				this.symbol = this.info.symbol
+				this.base  = this.info.base;
+				this.quote = this.info.quote
+			}
+
+			async updateTicker(ticker){
+				this.ticker = ticker;
+			}
+
+		}
+
+		class Exchange {
+			markets = {}
+
+			constructor(exchange){
+				this.name = exchange.id
+				this.exchange = exchange;
+				
+			}
+
+	
+			
+
+			setTicker(ticker){
+				if (this.markets[ticker.symbol] === undefined){
+					throw new Error(`Can not find ${ticker.symbol} market in ${this.exchange.name} exchange`)
+				}
+				this.markets[ticker.symbol].updateTicker(ticker);
+			}
+
+			async updateMarkets(){
+				await this.exchange.fetchMarkets()
+				.then((markets)=>{
+					markets.forEach((market)=>{
+						this.markets[market.symbol] = new Market(this,market)
+					});
+				});
+			}
+
+			async updateTickers(){
+				await this.exchange.fetchTickers().then((tickers) => {
+					Object.values(tickers).forEach((ticker)=>{
+						this.setTicker(ticker)
+					})
+				})
+				
+			}
+		}
+
+		class Trade {
+
+			constructor(currency,market,amount){
+				this.initalCurrency = currency;
+				this.initalAmount = amount;
+				this.market = market;
+				this.set()
+
+			}
+
+			set(){
+				switch(this.initalCurrency){
+					case this.market.base:
+						this.orderType = "ASK";
+						this.finalCurrency = this.market.quote;
+						this.finalAmount = this.initalAmount * this.market.ticker.ask
+
+						break;
+
+					case this.market.quote:
+						this.orderType = "BID"
+						this.finalCurrency = this.market.base;
+						this.finalAmount = this.initalAmount * this.market.ticker.ask
+
+						break;
+
+					default:
+						throw new Error(`${this.initalCurrency} is tradable in the ${this.market.symbol} market`)
+				}
+				this.computeAmount()
+			}
+
+			computeAmount(){
+				switch(this.orderType){
+					case "BID":
+						this.finalAmount = this.initalAmount * this.market.ticker.ask;
+						break
+
+					case "ASK":
+						this.finalAmount = this.initalAmount * this.market.ticker.ask;
+						break;
+
+					default:
+						throw new Error(`${this.orderType}  is invalid as an OrderType`)
+				}
+			}
+
+
+		}
+
+		class TradeSequence{
+			trades = []
+
+
+			constructor(currency,amount,markets){
+				this.baseCurrency = currency;
+				this.initalAmount = amount;
+				this.setTrades(markets);
+			}
+
+			setTrades(markets){
+				var currency = this.baseCurrency;
+				var amount = this.initalAmount
+				markets.forEach((market)=>{
+					var trade = new Trade(currency,market,amount);
+					this.trades.push(trade);
+					currency = trade.finalCurrency;
+					amount = trade.initalAmount;
+				});
+				this.finalAmount = trades[trades.length-1].finalAmount;
+				
+			}
+
+
+		}
+
+
+		
+
+		class App{
+			
+			baseCurrency = 'USDT';
+			exchanges = {};
+			currencies = {}
+			
+
+			constructor(){
+			}
+
+			createCurrency(name,market){
+				if (this.currencies[name] === undefined){
+					this.currencies[name] = new Currency(this.currencies.index,name);
+				}
+				this.currencies[name].updateMarket(market);
+
+			} 
+
+			computeAbritage(markets,currency){
+				console.info("Computing Abritage....")
+
+				if (n == 0){
+					this.currencies[this.baseCurrency].quoteMarkets.forEach((market)=>{
+						markets.push(market)
+					})
+					return
+				}
+				
+
+			}
+	
+			async loadExchanges(exchanges){
+				for (var i = exchanges.length - 1; i >= 0; i--) {
+					await this.loadExchange(exchanges[i])
+				}
+			}
+
+			async loadExchange(exchange){
+				this.exchanges[exchange.name] = new Exchange(exchange);
+				await this.exchanges[exchange.name].updateMarkets().then(() =>{
+					Object.values(this.exchanges[exchange.name].markets).forEach((market)=>{
+						this.createCurrency(market.base,market);
+						this.createCurrency(market.quote,market);
+					})
+				})
+				await this.exchanges[exchange.name].updateTickers();
+
+			}
+
+			renderCurrenies(){
+				window.currenciesSection.innerHTML = ""
+				Object.values(this.currencies).forEach((currency)=>{
+					currency.renderHTML()
+				})
+			}
+
+			async init(){
+				await this.loadExchanges(exchanges).then(()=>{
+					this.renderCurrenies()
+				});
+			}
+
+			run(){
+				
+				setTimeout(this.computeAbritage(),3000);
+			
+			}
+		}
+
+		var exchanges = [new ccxt.binance()]
+
+		window.currencies = {}
+		window.currenciesSection = document.getElementById("currencies");
+		window.section = document.getElementsByTagName("section")[0];
+		
+		window.app = new App()
+		app.init().then(()=>{
+			app.run();
+		})
+		
+		
+		
+
+		
+	</script>
+
+</footer>
+</body>
+
+</html>
